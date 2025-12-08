@@ -27,36 +27,39 @@ for i in range(n):
 
 pairs.sort()
 
-circuits = dict()
-circuit_by_box = dict()
+"""
+when we connect two boxes, we make one parent of the other
+this can form a tree
+the root of the tree identifies the circuit
+"""
+parents = {}
+size = {}
+def get_circuit(i: int) -> int:
+    if i not in parents:
+        parents[i] = i
+        size[i] = 1
+        return i
+    p = parents[i]
+    if p != i:
+        p = get_circuit(p)
+        parents[i] = p
+    return p
 
-def connect(i, j):
-    if i in circuit_by_box:
-        ci = circuit_by_box[i]
-    else:
-        circuit_by_box[i] = i
-        circuits[i] = set([i])
-        ci = i
-
-    if j in circuit_by_box:
-        cj = circuit_by_box[j]
-    else:
-        circuit_by_box[j] = j
-        circuits[j] = set([j])
-        cj = j
-
-    if ci == cj:
-        return
-
-    circuits[ci] = circuits[ci].union(circuits[cj])
-    for j in circuits[cj]:
-        circuit_by_box[j] = ci
-    del circuits[cj]
-    
+def connect(i: int, j: int):
+    i = get_circuit(i)
+    j = get_circuit(j)
+    parents[i] = j
+    size[j] += size[i]
 
 for distance, i, j in pairs:
-    connect(i, j)
-    if len(circuits) == 1 and len(circuits[circuit_by_box[i]]) == len(input):
-        print(input[i], input[j])
-        print(input[i].x * input[j].x)
-        break
+    ci = get_circuit(i)
+    cj = get_circuit(j)
+    if ci != cj:
+        connect(i, j)
+        # print(f"connect {i} {j}")
+        ci = get_circuit(i)
+        # print(ci, [t for t in parents if get_circuit(t) == ci])
+        if size[ci] == len(input):
+            print(input[i], input[j])
+            print(input[i].x*input[j].x)
+            break
