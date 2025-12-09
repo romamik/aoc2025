@@ -1,5 +1,5 @@
 import os
-from copy import copy
+from typing import *
 
 
 class Point:
@@ -16,64 +16,97 @@ class Point:
 with open(os.path.dirname(__file__) + "/input.txt", "r") as file:
     input = [Point(line) for line in file if len(line.strip()) > 0]
 
-max_x = max(pt.x for pt in input)
-max_y = max(pt.y for pt in input)
-min_x = min(pt.x for pt in input)
-min_y = min(pt.y for pt in input)
-width = max_x - min_x + 1
-height = max_y - min_y + 1
-print(min_x, min_y, max_x, max_y)
+all_x = list(set(pt.x for pt in input))
+all_y = list(set(pt.y for pt in input))
+all_x.sort()
+all_y.sort()
 
-canvas = [0] * (width * height)
+# we want to "compress space"
+# we create a grid with all unique x and y
+# we are interested in the state of cells in such grid: are they filled or not
+#
+# actually we can create a grid where there are cells for exact x or y or spaces between them
+# let's call indices in this grid xx and yy
+
+"""
+gets sorted list of coordinates
+creates a mapping from normal coordinates to compressed coordinates
+
+in compressed space adjacent points have distance 
+    * 0 - if they have distance ==0 in normal coordinates
+    * 1 - if they have distance > 0 in normal coordinates
+
+[1,2,10,11,15] will be compressed to
+[0,1,3,4,6]
+and mappings will be [1:0, 1:2, 10:3, 11:4, 15:6]
+"""
 
 
-def set_at(x, y, v):
-    canvas[(x - min_x) + (y - min_y) * width] = v
+def compress_axis(all_t: List[int]) -> Dict[int, int]:
+    tt_by_t: Dict[int, int] = {}
+    tt_by_t[all_t[0]] = 0
+    tt = 1
+    for i in range(1, len(all_t)):
+        prev_t = all_t[i - 1]
+        t = all_t[i]
+        if prev_t < t - 1:
+            tt += 1
+        tt_by_t[t] = tt
+        tt += 1
+    return tt_by_t
 
 
-def get_at(x, y):
-    return canvas[(x - min_x) + (y - min_y) * width]
+xx_by_x = compress_axis(all_x)
+yy_by_y = compress_axis(all_y)
+width = xx_by_x[all_x[-1]] + 1
+height = yy_by_y[all_y[-1]] + 1
 
+canvas = [[0] * width for _ in range(height)]
 
 # draw lines
+# we only draw vertical lines and we write -1 or 1 depending on direction up or down
 for i in range(len(input)):
     prev_pt = input[i]
     pt = input[(i + 1) % len(input)]
     if prev_pt.x == pt.x:
-        x = pt.x
-        y0 = prev_pt.y
-        y1 = pt.y
-        dy = 1 if y1 > y0 else -1
-        for y in range(y0, y1 + dy, dy):
-            set_at(x, y, dy)
+        xx = xx_by_x[pt.x]
+        yy0 = yy_by_y[prev_pt.y]
+        yy1 = yy_by_y[pt.y]
+        dyy = 1 if yy1 > yy0 else -1
+        for yy in range(yy0, yy1 + dyy, dyy):
+            canvas[yy][xx] = dyy
 
 # fill
-for y in range(min_y, max_y + 1):
-    print(f"fill {y-min_y}/{height}")
+for yy in range(height):
     inside = 0
-    for x in range(min_x, max_x + 1):
-        v = get_at(x, y)
+    for xx in range(width):
+        v = canvas[yy][xx]
         if inside != v:
             inside += v
-        set_at(x, y, "." if inside == 0 else "#")
+        if inside != 0 or v != 0:
+            canvas[yy][xx] = 1
 
-# print canvas
-# for y in range(min_y, max_y + 1):
+# # print canvas
+# for yy in range(height):
 #     s = ""
-#     for x in range(min_x, max_x + 1):
-#         s += str(get_at(x, y))
+#     for xx in range(width):
+#         s += str(canvas[yy][xx])
 #     print(s)
 
+
 def is_filled(x0, x1, y0, y1) -> bool:
-    for x in range(x0, x1+1):
-        for y in range(y0, y1+1):
-            if get_at(x, y) != "#":
+    xx0 = xx_by_x[x0]
+    xx1 = xx_by_x[x1]
+    yy0 = yy_by_y[y0]
+    yy1 = yy_by_y[y1]
+    for xx in range(xx0, xx1 + 1):
+        for yy in range(yy0, yy1 + 1):
+            if canvas[yy][xx] == 0:
                 return False
     return True
 
 max_area = 0
 for i, a in enumerate(input):
-    print(f"search {i}/{len(input)}")
     for j in range(i + 1, len(input)):
         b = input[j]
         dx = abs(a.x - b.x) + 1
