@@ -95,7 +95,6 @@ for yy in range(height):
 
 # prefix_sum[yy][xx] - number of filled cells in rectangle (0,0)-(xx,yy) (exclusive)
 prefix_sum = [[0] * (width+1) for _ in range(height+1)]
-prefix_sum[0][0] = canvas[0][0]
 for yy in range(1, height+1):
     for xx in range(1, width+1):
         prefix_sum[yy][xx] = (
