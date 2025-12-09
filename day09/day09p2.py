@@ -93,17 +93,26 @@ for yy in range(height):
 #         s += str(canvas[yy][xx])
 #     print(s)
 
+# prefix_sum[yy][xx] - number of filled cells in rectangle (0,0)-(xx,yy) (exclusive)
+prefix_sum = [[0] * (width+1) for _ in range(height+1)]
+prefix_sum[0][0] = canvas[0][0]
+for yy in range(1, height+1):
+    for xx in range(1, width+1):
+        prefix_sum[yy][xx] = (
+            prefix_sum[yy][xx - 1]
+            + prefix_sum[yy - 1][xx]
+            - prefix_sum[yy - 1][xx - 1]
+            + canvas[yy-1][xx-1]
+        )
 
 def is_filled(x0, x1, y0, y1) -> bool:
     xx0 = xx_by_x[x0]
     xx1 = xx_by_x[x1]
     yy0 = yy_by_y[y0]
     yy1 = yy_by_y[y1]
-    for xx in range(xx0, xx1 + 1):
-        for yy in range(yy0, yy1 + 1):
-            if canvas[yy][xx] == 0:
-                return False
-    return True
+    filled_count = prefix_sum[yy1+1][xx1+1]-prefix_sum[yy0][xx1+1]-prefix_sum[yy1+1][xx0]+prefix_sum[yy0][xx0]
+    area = (yy1-yy0+1)*(xx1-xx0+1)
+    return filled_count == area
 
 max_area = 0
 for i, a in enumerate(input):
@@ -113,8 +122,8 @@ for i, a in enumerate(input):
         dy = abs(a.y - b.y) + 1
         area = dx * dy
         if area > max_area:
-            x0, x1 = min(a.x,b.x), max(a.x, b.x)
-            y0, y1= min(a.y,b.y), max(a.y, b.y)
+            x0, x1 = min(a.x, b.x), max(a.x, b.x)
+            y0, y1 = min(a.y, b.y), max(a.y, b.y)
             if is_filled(x0, x1, y0, y1):
                 max_area = area
 print(max_area)
