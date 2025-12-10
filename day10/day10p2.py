@@ -168,6 +168,11 @@ def solve(machine: MachineDescr) -> int:
         known_values = substitute(known_values)
         if known_values is None:
             return
+        
+        # optimization: early exit if current sum > already found result
+        known_sum = sum(v for v in known_values if v is not None)
+        if result is not None and known_sum > result_sum:
+            return
 
         # check if all values are set
         all_known = True
