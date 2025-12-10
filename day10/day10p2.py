@@ -1,5 +1,6 @@
 import os
 from math import gcd
+from typing import *
 
 
 class MachineDescr:
@@ -18,7 +19,7 @@ class MachineDescr:
         return f"(buttons:{self.buttons} counters:{self.counters})"
 
 
-with open(os.path.dirname(__file__) + "/test.txt", "r") as file:
+with open(os.path.dirname(__file__) + "/input.txt", "r") as file:
     input = [MachineDescr(line) for line in file]
 
 """
@@ -44,6 +45,14 @@ and modifying the remaining set such that row[btn] == 0 in each equation (so p[b
 for this we select first equation that has nonzero row[btn] and for every other equation that has nonzero row[btn]
 we create a new equation by multipling both by row[btn] from other equation and subtracting.
 
+when we have the reduced equations we can try to solve them. there can be different number of free variables.
+
+we can have a function that takes some known variables and tries to deduce other variables based on this,
+the result of such operation can be some or all arguments known or there is contradiction
+
+with such function we can have another function that calls itself recursively to guess the correct values, 
+it should select values that bound minimal number of other values for this process to be effective
+
 """
 
 
@@ -62,6 +71,18 @@ def solve(machine: MachineDescr) -> int:
         for cnt in wires:
             mat[cnt][btn] = 1
 
+    print("mat", mat)
+
+    # find maximum number of presses for each button
+    # each press increments all connected counters
+    # maximum presses is such that it exeeds the minimum target value
+    bounds = [None] * num_btn
+    for cnt in range(num_cnt):
+        target = mat[cnt][-1]
+        for btn in range(num_btn):
+            if mat[cnt][btn] == 1 and (bounds[btn] is None or bounds[btn] > target):
+                bounds[btn] = target
+
     # this will be the reduced matrix
     # it will be of form such that first row can have all non-zero coefficients
     # second row has row[0]==0
@@ -69,102 +90,128 @@ def solve(machine: MachineDescr) -> int:
     # etc until the last row where only some last elements are non zero
     reduced_mat = []
 
-    # try to reduce every button
-    for btn in range(num_btn):
-        # select row that has row[btn] != 0
-        selected = 0
-        while selected < len(mat) and mat[selected][btn] == 0:
-            selected += 1
+    # while there are still non-processed equations
+    while len(mat) > 0:
+        # we are going to take the last row, select one coefficient in it and make it zero in all other rows
+        cur_row = mat.pop()
+        # find first non-zero coefficient in the last row
+        selected_btn = -1
+        for btn in range(num_btn):
+            if cur_row[btn] != 0:
+                selected_btn = btn
+                break
 
-        if selected == len(mat):
-            # all equations have row[btn] == 0
-            # just take any (last) equation and move to reduced mat
-            if len(mat) > 0:
-                reduced_mat.append(mat.pop())
-        else:
-            selected_row = mat[selected]
-            # for every other equation make row[btn]==0 by combining with first equation
-            for row_num, row in enumerate(mat):
-                if row_num == selected:
-                    continue
+        if selected_btn < 0:
+            # all coefficients were zero, just throw this row away and continue the loop
+            assert cur_row[-1] == 0
+            continue
 
-                # make row[btn]==0
-                a = selected_row[btn]
-                b = row[btn]
-                for i in range(num_btn+1):
-                    row[i] = row[i]*a - selected_row[i]*b
+        for row in mat:
+            # make row[btn]==0
+            a = cur_row[btn]
+            b = row[btn]
+            for i in range(num_btn + 1):
+                row[i] = row[i] * a - cur_row[i] * b
 
-                # normalize the equation
-                row_gcd = gcd(*row)
-                if row_gcd != 0:
-                    if row[-1] < 0:
-                        row_gcd *= -1
-                    for i in range(len(row)):
-                        row[i] //= row_gcd
+            # normalize the equation
+            row_gcd = gcd(*row)
+            if row_gcd != 0:
+                if row[-1] < 0:
+                    row_gcd *= -1
+                for i in range(len(row)):
+                    row[i] //= row_gcd
 
-            # move selected row to reduced_mat
-            reduced_mat.append(mat.pop(selected))
+        # move selected row to reduced_mat
+        reduced_mat.append(cur_row)
 
-    # now we have reduced_mat which is a system len(reduced_mat) equations for num_btn variables
-    # we can select num_btn-len(reduced_mat) free variables and check all possible combinations to find the minimal result
-    # if there are no free variables we can just calculate the result
-    # we always select first btn as free variables
+    print("reduced_mat", reduced_mat)
 
-    num_rows = len(reduced_mat)
-    def calc_result(free_values: List[int]):
-        # we have reduced_mat, 
-        # it is guaranteed that at each row it has only last num_btn-row non-zero items
-        # if we supply last (num_btn-num_rows) values to the last equation we will get value for one variable
-        # then we can go to the previous row, etc.
-        num_rows = len(reduced_mat)
-        assert(len(free_values) == num_btn-num_rows)
-        result = [0]*num_btn
-        for i, v in enumerate(free_values):
-            result[i + num_rows] = v
-
-        for row_num in range(num_rows-1, -1, -1):
-            row = reduced_mat[row_num]
-            v = row[-1]
-            btn = -2
-            for i, v in enumerate(free_values):
-                v -= row[btn] * v
-                btn -= 1
-            result[row_num] = v
-
-        return result
-
-    if num_rows == num_btn:    
+    # takes known_values and substitutes them into matrix
+    # tries to figure out other values
+    # returns None if there is contradiction
+    # or a new list of known_values
+    def substitute(known_values: List[int | None]) -> List[int | None] | None:
+        new_known = known_values[:]
         for row in reduced_mat:
-            print(row)
-        result = calc_result([])
+            count_unknown = 0
+            unknown_idx = -1
+            sum_known = 0
+            target = row[-1]
+            for i in range(num_btn):
+                if new_known[i] is None:
+                    if row[i] != 0:
+                        count_unknown += 1
+                        unknown_idx = i
+                else:
+                    sum_known += new_known[i] * row[i]
+
+            if count_unknown == 0:
+                if sum_known != target:
+                    return None
+            elif count_unknown == 1:
+                rhs = target - sum_known
+                if rhs % row[unknown_idx] != 0:
+                    return None
+                val = rhs // row[unknown_idx]
+                if val < 0:
+                    return None
+                new_known[unknown_idx] = val
+        return new_known
+
+    # this function recursively searches for solutions
+    result = None
+    result_sum = 0
+
+    def search(known_values: List[None | int] = [None] * num_btn):
+        nonlocal result, result_sum
+
+        known_values = substitute(known_values)
+        if known_values is None:
+            return
+
+        # check if all values are set
+        all_known = True
+        for v in known_values:
+            if v is None:
+                all_known = False
+                break
+        if all_known:
+            sum_known = sum(known_values)
+            if result is None or result_sum > sum_known:
+                result = known_values
+                result_sum = sum_known
+            return
+
+        # select least bound variable
+        selected_btn = -1
+        selected_count_unknown = num_btn + 1
         for row in reduced_mat:
-            for btn in range(num_btn):
+            count_unknown = 0
+            unknown_idx = -1
+            for i in range(num_btn):
+                if known_values[i] is None and row[i] != 0:
+                    count_unknown += 1
+                    unknown_idx = i
+            if count_unknown > 0 and count_unknown < selected_count_unknown:
+                selected_btn = unknown_idx
+                selected_count_unknown = count_unknown
 
-        print(result)
-        print(sum(result))
+        # try all possible values for selected variable
+        assert selected_btn >= 0
+        for val in range(bounds[selected_btn] + 1):
+            known_values[selected_btn] = val
+            search(known_values)
 
+    search()
+    print("result", result)
+    return result_sum
 
 
 result = 0
 for machine in input:
+    print("---")
     print(machine)
     machine_result = solve(machine)
-    # print(machine_result)
-    # result += machine_result
-# print(result)
-
-"""
-(buttons:[[3], [1, 3], [2], [2, 3], [0, 2], [0, 1]] counters:[3, 5, 4, 7])
- p0 p1 p2 p3 p4 p5  target
-[1, 1, 0, 1, 0, 0, 7] 
-[0, 1, 0, 0, 0, 1, 5] 
-[0, 0, 1, 1, 1, 0, 4] 
-[0, 0, 0, 0, 1, 1, 3]
-
-known result, p=
-[1, 3, 0, 3, 1, 2]
- 1+ 3 +0 +3 +0 +0==7
- 0 +3          +2==5
-          3 +1   ==4
-             1 +2==3
-"""
+    print(machine_result)
+    result += machine_result
+print(result)
